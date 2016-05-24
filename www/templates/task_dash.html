@@ -1,0 +1,16 @@
+<ion-view view-title="My Tasks">
+    <ion-content class="padding">
+
+        <!-- Render the tasks -->
+
+            <div class="card" ng-repeat="task in tasks">
+                <div class="item item-divider">
+                    {{ task.class }}
+                </div>
+                <div class="item item-text-wrap">
+                    {{ task.task }}
+                </div>
+            </div>
+
+    </ion-content>
+</ion-view>
