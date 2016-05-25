@@ -1,14 +1,15 @@
 <ion-view view-title="My Tasks">
     <ion-content class="padding">
 
-        <!-- Render the tasks -->
+        <h1>{{ authToken }}</h1>
 
+        <!-- Render the tasks -->
             <div class="card" ng-repeat="task in tasks">
                 <div class="item item-divider">
-                    {{ task.class }}
+                    {{ task.class_name }}
                 </div>
                 <div class="item item-text-wrap">
-                    {{ task.task }}
+                    {{ task.task_desc }}
                 </div>
             </div>
 

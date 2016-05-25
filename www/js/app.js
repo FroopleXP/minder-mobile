@@ -5,22 +5,16 @@
 // the 2nd parameter is an array of 'requires'
 angular.module('minder', ['ionic'])
 
-.run(function($ionicPlatform) {
-  $ionicPlatform.ready(function() {
-    if(window.cordova && window.cordova.plugins.Keyboard) {
-      // Hide the accessory bar by default (remove this to show the accessory bar above the keyboard
-      // for form inputs)
-      cordova.plugins.Keyboard.hideKeyboardAccessoryBar(true);
-
-      // Don't remove this line unless you know what you are doing. It stops the viewport
-      // from snapping when text inputs are focused. Ionic handles this internally for
-      // a much nicer keyboard experience.
-      cordova.plugins.Keyboard.disableScroll(true);
-    }
-    if(window.StatusBar) {
-      StatusBar.styleDefault();
-    }
-  });
+.run(function($ionicPlatform, $http) {
+    $ionicPlatform.ready(function() {
+        if(window.cordova && window.cordova.plugins.Keyboard) {
+            cordova.plugins.Keyboard.hideKeyboardAccessoryBar(true);
+            cordova.plugins.Keyboard.disableScroll(true);
+        }
+        if(window.StatusBar) {
+            StatusBar.styleDefault();
+        }
+    });
 })
 
 // Routing
@@ -31,8 +25,7 @@ angular.module('minder', ['ionic'])
     .state('login', {
         url: '/login',
         templateUrl: 'templates/login.html',
-        controller: 'loginCtrl',
-        cache: false
+        controller: 'loginCtrl'
     })
 
     .state('task_dash', {
@@ -46,21 +39,32 @@ angular.module('minder', ['ionic'])
 
 })
 
-.controller('loginCtrl', function($scope, login_serv, $state) {
+.controller('loginCtrl', function($scope, login_serv, $state, $ionicPopup, $ionicLoading) {
 
     $scope.loginUser = function(data) {
+
+        // Start loading
+        $ionicLoading.show({
+            template: "Logging in..."
+        });
+
         login_serv.loginUser(data)
         .then(function() {
             $state.go('task_dash');
         })
         .catch(function(error) {
-            console.log(error);
+            $ionicPopup.alert({
+                title: "Failed to login!",
+                template: error
+            });
+        }).then(function() {
+            $ionicLoading.hide();
         });
     }
 
 })
 
-.controller('menuCtrl', function($scope, login_serv, $state, $ionicSideMenuDelegate) {
+.controller('menuCtrl', function($scope, login_serv, $state, $ionicSideMenuDelegate, $ionicPopup) {
 
     $scope.logoutUser = function() {
         login_serv.logout()
@@ -69,7 +73,10 @@ angular.module('minder', ['ionic'])
             $state.go('login');
         })
         .catch(function(error){ // Failure
-            console.log(error);
+            $ionicPopup.alert({
+                title: "Something went wrong!",
+                template: error
+            });
         })
     }
 
@@ -79,20 +86,69 @@ angular.module('minder', ['ionic'])
 
 })
 
-.controller('taskCtrl', function($scope, auth) {
+.controller('taskCtrl', function($scope, auth, $state, task_serv, $ionicPopup, $ionicLoading) {
 
     // This is a protected route
     auth.checkAuth();
 
-    $scope.tasks = [
-        { class: "Computer Science", task: "Do work!" },
-        { class: "Electronics", task: "Try not to make fun of my head." },
-        { class: "Engineering", task: "Do assignment D1" }
-    ];
+    // Function used to get tasks
+    $scope.getTasks = function() {
+
+        // Start loading
+        $ionicLoading.show({
+            template: "Getting tasks..."
+        });
+
+        task_serv.get()
+        .then(function(tasks) {
+            $scope.tasks = tasks;
+            console.log(tasks);
+        })
+        .catch(function(error) {
+            $ionicPopup.alert({
+                title: "Failed to get tasks!",
+                template: error
+            });
+        })
+        .then(function() {
+            $ionicLoading.hide();
+        });
+    }
+
+    // Getting tasks
+    $scope.getTasks();
 
 })
 
-.factory('auth', function($state, $q) {
+.factory('task_serv', function($q, $http) {
+    return {
+        get: function() {
+            // Preparing the promise
+            var q = $q.defer();
+            // Sending http GET to get tasks for the user
+            $http.get("http://localhost:1337/api/tasks", {
+                headers: {
+                    'x-access-token': window.localStorage.getItem("auth-token")
+                }
+            })
+            .then(function(response) {
+                q.resolve(response.data.tasks);
+            })
+            .catch(function(error) {
+                if (error.status === -1) { // No connection to server!
+                    q.reject("Failed to connect to server!");
+                } else {
+                    q.reject(error.data.message);
+                }
+            })
+
+            // Returning promise
+            return q.promise;
+        }
+    }
+})
+
+.factory('auth', function($state, $q, $http) {
     return {
         checkToken: function() {
             // Used to check if the token is set
@@ -115,11 +171,6 @@ angular.module('minder', ['ionic'])
             } else {
                 return token; // Used for when other functions call it
             }
-        },
-        injectToken: function() {
-            // Getting the token
-            var token = checkAuth;
-            return token;
         },
         setToken: function(token) {
             // Setting the token
@@ -161,24 +212,37 @@ angular.module('minder', ['ionic'])
     }
 })
 
-.factory('login_serv', function($q, $state, auth) {
+.factory('login_serv', function($q, $state, auth, $http) {
     return {
         loginUser: function(login_data) {
             // Creating the promise
             var q = $q.defer();
+
             // Sending the data to API
-            if (login_data.email === "connor@frooplexp.com" && login_data.password === "letmein") {
-                // Setting the cookie
-                auth.setToken(login_data.email)
+            var user_info = {
+                email: login_data.email,
+                password: login_data.password
+            }
+
+            // Logging user in
+            $http.post('http://localhost:1337/api/auth', user_info)
+            .then(function(response) {
+                auth.setToken(response.data.token)
                 .then(function() {
                     q.resolve();
                 })
                 .catch(function(error) {
                     q.reject(error);
                 })
-            } else {
-                q.reject("Failed to login!");
-            }
+            })
+            .catch(function(error) {
+                if (error.status === -1) { // No connection to server!
+                    q.reject("Failed to connect to server!");
+                } else {
+                    q.reject(error.data.message);
+                }
+            })
+
             // Returning the promise
             return q.promise;
         },
