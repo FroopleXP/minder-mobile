@@ -1,3 +1,13 @@
+//////////////////////////////////////////////////////////////
+///
+///     MINDER MOBILE
+///     WRITTEN BY: CONNOR EDWARDS
+///     DATE: 24/5/16
+///     (c) Noval Studios, 2016 -
+///     MIT License (MIT) | Open Source Initiative
+///
+//////////////////////////////////////////////////////////////
+
 angular.module('minder', ['ionic'])
 
 .run(function($ionicPlatform, $http) {
