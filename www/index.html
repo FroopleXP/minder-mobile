@@ -29,7 +29,7 @@
             <ion-side-menu-content>
                 <ion-nav-bar class="bar-dark">
                     <ion-nav-buttons side="primary">
-                        <button class="button button-icon" ng-click="showMenu()">
+                        <button class="button button-icon" ng-click="toggleMenu()">
                             <i class="icon ion-navicon"></i>
                         </button>
                     </ion-nav-buttons>
@@ -44,7 +44,7 @@
                 </ion-header-bar>
                 <ion-content scroll="false">
                     <ion-list>
-                        <ion-item ng-click="logoutUser()">
+                        <ion-item ng-click="logout()">
                             Logout
                         </ion-item>
                     </ion-list>

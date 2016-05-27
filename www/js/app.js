@@ -23,7 +23,7 @@ angular.module('minder', ['ionic'])
 })
 
 // Routing
-.config(function($stateProvider, $urlRouterProvider) {
+.config(function($stateProvider, $urlRouterProvider, $httpProvider) {
 
     $stateProvider
 
@@ -41,120 +41,95 @@ angular.module('minder', ['ionic'])
     })
 
     $urlRouterProvider.otherwise('/login');
+    $httpProvider.interceptors.push('httpInterceptor');
 
 })
 
-.controller('loginCtrl', function($scope, login_serv, $state, $ionicPopup, $ionicLoading) {
-
-    $scope.loginUser = function(data) {
-
-        // Start loading
-        $ionicLoading.show({
-            template: "Logging in..."
-        });
-
-        login_serv.loginUser(data)
-        .then(function() {
-            $state.go('task_dash');
-        })
-        .catch(function(error) {
-            $ionicPopup.alert({
-                title: "Failed to login!",
-                template: error
-            });
-        }).then(function() {
-            $ionicLoading.hide();
-        });
-    }
-
-})
-
-.controller('menuCtrl', function($scope, login_serv, $state, $ionicSideMenuDelegate, $ionicPopup) {
-
-    $scope.logoutUser = function() {
-        login_serv.logout()
-        .then(function() { // Success
-            $ionicSideMenuDelegate.toggleLeft(false);
-            $state.go('login');
-        })
-        .catch(function(error){ // Failure
-            $ionicPopup.alert({
-                title: "Something went wrong!",
-                template: error
-            });
-        })
-    }
-
-    $scope.showMenu = function() {
+// Controllers
+.controller('menuCtrl', function($scope, $ionicSideMenuDelegate, loginServ) {
+    // Toggle the menu
+    $scope.toggleMenu = function() {
         $ionicSideMenuDelegate.toggleLeft();
     }
-
-})
-
-.controller('taskCtrl', function($scope, auth, $state, task_serv, $ionicPopup, $ionicLoading) {
-
-    // This is a protected route
-    auth.checkAuth();
-
-    // Function used to get tasks
-    $scope.getTasks = function() {
-
-        // Start loading
-        $ionicLoading.show({
-            template: "Getting tasks..."
-        });
-
-        task_serv.get()
-        .then(function(tasks) {
-            $scope.tasks = tasks;
-            console.log(tasks);
-        })
-        .catch(function(error) {
-            $ionicPopup.alert({
-                title: "Failed to get tasks!",
-                template: error
-            });
-        })
-        .then(function() {
-            $ionicLoading.hide();
-        });
+    $scope.logout = function() {
+        loginServ.logout();
     }
-
-    // Getting tasks
-    $scope.getTasks();
-
 })
 
-.factory('task_serv', function($q, $http) {
-    return {
-        get: function() {
-            // Preparing the promise
-            var q = $q.defer();
-            // Sending http GET to get tasks for the user
-            $http.get("http://localhost:1337/api/tasks", {
-                headers: {
-                    'x-access-token': window.localStorage.getItem("auth-token")
-                }
-            })
-            .then(function(response) {
-                q.resolve(response.data.tasks);
-            })
-            .catch(function(error) {
-                if (error.status === -1) { // No connection to server!
-                    q.reject("Failed to connect to server!");
-                } else {
-                    q.reject(error.data.message);
-                }
-            })
+.controller('taskCtrl', function($scope, auth, $state) {
+    auth.checkAuth()
+    .then(function() {
 
-            // Returning promise
-            return q.promise;
+    })
+    .catch(function() {
+        $state.go('login');
+    })
+})
+
+.controller('loginCtrl', function($scope, loginServ, $state) {
+    // Function to login user
+    $scope.login = function(logindata) {
+        loginServ.login(logindata);
+    }
+})
+
+// loginServ
+.factory('loginServ', function($q, $http, $state, $ionicPopup, auth) {
+    return {
+        login: function(login) {
+            $http.post("http://client.minder.noval-technologies.uk/api/auth", login)
+            .then(function(response){
+                auth.setToken(response.data.token)
+                .then(function() {
+                    $state.go('task_dash');
+                })
+                .catch(function(err) {
+                    $ionicPopup.alert({
+                        title: "Failed to login!",
+                        template: err
+                    })
+                })
+            })
+            .catch(function(err) {
+                $ionicPopup.alert({
+                    title: "Failed to login!",
+                    template: err.message
+                })
+            })
+        },
+        logout: function() {
+            // Logging the user out
+            auth.unsetToken()
+            .then(function() {
+                $state.go('login');
+            })
+            .catch(function(err){
+                $ionicPopup.alert({
+                    title: "Failed to logout!",
+                    template: err
+                })
+            })
         }
     }
 })
 
-.factory('auth', function($state, $q, $http) {
+.factory('auth', function($q, $state) {
     return {
+        setToken: function(token_to_set) {
+            // Creating the promise
+            var q = $q.defer();
+            // Setting the token
+            window.localStorage['auth-token'] = token_to_set;
+            // Checking that the token is set
+            this.checkToken()
+            .then(function() {
+                q.resolve();
+            })
+            .catch(function() {
+                q.reject("Failed to set token!");
+            })
+            return q.promise;
+        },
         checkToken: function() {
             // Used to check if the token is set
             var q = $q.defer();
@@ -169,34 +144,17 @@ angular.module('minder', ['ionic'])
             return q.promise;
         },
         checkAuth: function() {
-            // Used to check that the User has a token
-            var token = window.localStorage.getItem("auth-token");
-            if (token === null) {
-                $state.go('login');
-            } else {
-                return token; // Used for when other functions call it
-            }
-        },
-        setToken: function(token) {
-            // Setting the token
+            // Creating the promise
             var q = $q.defer();
-            // Checking the token
-            if (typeof token === 'undefined' || token === null) {
-                q.reject("No token provided...");
-            } else if (token) {
-                // Setting the token
-                window.localStorage['auth-token'] = token;
-                // Checking that the token has been set
-                this.checkToken().
-                then(function(result) {
-                    if (result === true) {
-                        q.resolve();
-                    } else if (result === false) {
-                        q.reject("Failed to set token!");
-                    }
-                })
-            }
-            // Returning promise
+            // Checking that the user is logged in
+            this.checkToken()
+            .then(function(cb) {
+                if (cb === true) {
+                    q.resolve();
+                } else if (cb === false) {
+                    $state.go('login');
+                }
+            })
             return q.promise;
         },
         unsetToken: function() {
@@ -217,54 +175,30 @@ angular.module('minder', ['ionic'])
     }
 })
 
-.factory('login_serv', function($q, $state, auth, $http) {
+// HTTP interceptor
+.factory('httpInterceptor', function($q) {
     return {
-        loginUser: function(login_data) {
-            // Creating the promise
-            var q = $q.defer();
-
-            // Sending the data to API
-            var user_info = {
-                email: login_data.email,
-                password: login_data.password
-            }
-
-            // Logging user in
-            $http.post('http://localhost:1337/api/auth', user_info)
-            .then(function(response) {
-                auth.setToken(response.data.token)
-                .then(function() {
-                    q.resolve();
-                })
-                .catch(function(error) {
-                    q.reject(error);
-                })
-            })
-            .catch(function(error) {
-                if (error.status === -1) { // No connection to server!
-                    q.reject("Failed to connect to server!");
-                } else {
-                    q.reject(error.data.message);
-                }
-            })
-
-            // Returning the promise
-            return q.promise;
+        request: function(control) {
+            return $q.resolve(control);
         },
-        logout: function() {
-            // Creating the promise
-            var q = $q.defer();
-            // Logging them out
-            auth.unsetToken().
-            then(function(){
-                console.log("Logged out...");
-                q.resolve();
-            })
-            .catch(function(error) {
-                q.reject(error);
-            })
-            // Returning promise
-            return q.promise;
+        requestError: function(rejection) {
+            return $q.reject(rejection);
+        },
+        response: function(response) {
+            return $q.resolve(response);
+        },
+        responseError: function(rejection) {
+            // Checking the response
+            if (rejection.status === -1) { // Lost connection
+                rejection.message = "Lost connection!";
+            } else if (rejection.status === 401) {
+                rejection.message = "Token has expired";
+            } else if (rejection.status === 400) {
+                rejection.message = "API Could not be found :(";
+            } else {
+                rejection.message = rejection.data.message;
+            }
+            return $q.reject(rejection);
         }
     }
 })
